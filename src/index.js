@@ -77,28 +77,81 @@ const ls = async () => {
     }
 }
 
-const read = async (params) => {
-    console.log('read', params);
+const cat = async ([filepath]) => {
+    if (!!filepath) {
+        const fullPath = getFullPath(filepath);
+        if (await checkPath(fullPath)) {
+            await new Promise((resolve, reject) => {
+                const readStream = createReadStream(fullPath);
+                readStream.on('data', (data) => {
+                    process.stdout.write(data);
+                })
+                readStream.on('end', () => {
+                    process.stdout.write('\n');
+                    resolve();
+                })
+            }).catch(() => {
+                printWrongInput('Read error');
+            });
+        } else {
+            printWrongInput('Wrong path');
+        }
+    } else {
+        printWrongInput();
+    }
 }
 
-const create = async (params) => {
-    console.log('create', params);
+const create = async ([filename]) => {
+    if (filename) {
+        createWriteStream(path.join(curPath, filename), { flags: 'w' });
+    } else {
+        printWrongInput();
+    }
 }
 
-const rename = async (params) => {
-    console.log('rename', params);
+const rename = async ([from, to]) => {
+    if (from && to) {
+        const fromFullPath = getFullPath(from);
+        if (await checkPath(fromFullPath)) {
+            const newPath = path.join(path.dirname(fromFullPath), to);
+            await fs.rename(fromFullPath, newPath);
+        } else {
+            printWrongInput('Wrong path');
+        }
+    } else {
+        printWrongInput();
+    }
 }
 
-const copy = async (params) => {
-    console.log('copy', params);
+const moveCopy = async ([from, to], isMove = false) => {
+    if (from && to) {
+        const fromFullPath = getFullPath(from);
+        const toFullPath = getFullPath(to);
+        if (await checkPath(fromFullPath) && await checkPath(toFullPath)) {
+            const newPath = path.join(toFullPath, path.basename(fromFullPath));
+            await fs.copyFile(fromFullPath, newPath);
+            if (isMove) {
+                await fs.unlink(fromFullPath);
+            }
+        } else {
+            printWrongInput('Wrong origin or destination path');
+        }
+    } else {
+        printWrongInput();
+    }
 }
 
-const move = async (params) => {
-    console.log('move', params);
-}
-
-const remove = async (params) => {
-    console.log('remove', params);
+const remove = async ([filepath]) => {
+    if (filepath) {
+        const fullPath = getFullPath(filepath);
+        if (await checkPath(fullPath)) {
+            await fs.unlink(fullPath);
+        } else {
+            printWrongInput('Wrong path');
+        }
+    } else {
+        printWrongInput();
+    }
 }
 
 const hash = async ([filepath]) => {
@@ -279,19 +332,19 @@ const onData = async (data) => {
     const [cmd, ...params] = data.toString().trim().split(' ');
 
     if (cmd === 'exit') exit();
-    else if (cmd === 'up') await up(); // +
-    else if (cmd === 'cd') await cd(params); // +
-    else if (cmd === 'ls') await ls(); // +
-    else if (cmd === 'os') await osInfo(params); // +
-    else if (cmd === 'hash') await hash(params); // +
+    else if (cmd === 'up') await up();
+    else if (cmd === 'cd') await cd(params);
+    else if (cmd === 'ls') await ls();
+    else if (cmd === 'os') await osInfo(params);
+    else if (cmd === 'hash') await hash(params);
     else if (cmd === 'compress') await compress(params);
     else if (cmd === 'decompress') await decompress(params);
-    else if (cmd === 'cp') await copy(params);
+    else if (cmd === 'cp') await moveCopy(params);
+    else if (cmd === 'mv') await moveCopy(params, true);
     else if (cmd === 'rm') await remove(params);
-    else if (cmd === 'mv') await move(params);
     else if (cmd === 'rn') await rename(params);
-    else if (cmd === 'create') await create(params);
-    else if (cmd === 'read') await read(params);
+    else if (cmd === 'add') await create(params);
+    else if (cmd === 'cat') await cat(params);
     else printWrongInput();
 
     printPrompt();
