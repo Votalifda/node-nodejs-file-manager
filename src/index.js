@@ -1,8 +1,9 @@
 import os from 'os';
 import path from 'path';
 import fs from 'fs/promises';
-import {createReadStream} from 'fs';
+import {createReadStream, createWriteStream} from 'fs';
 import { createHash } from 'crypto';
+import zlib from 'zlib';
 
 let username = '';
 let curPath = '';
@@ -15,7 +16,7 @@ const up = async () => {
 }
 
 const cd = async ([dir]) => {
-    if (dir && dir !== '/' && dir !== '\\') {
+    if (dir && dir !== '/' && dir !== '\\' && dir !== '.' && dir !== '..') {
         let pathname = curPath;
         if (!path.isAbsolute(dir)) {
             pathname = path.join(pathname, dir);
@@ -122,12 +123,101 @@ const hash = async ([filepath]) => {
     }
 }
 
-const compress = async (params) => {
-    console.log('compress', params);
+const compress = async ([origin, dest]) => {
+    if (origin && (!dest || (dest !== '/' && dest !== '\\' && dest !== '.' && dest !== '..'))) {
+        const originFilePath = getFullPath(origin);
+        let destPath = '';
+        let destFile = '';
+
+        if (dest) {
+            destPath = path.dirname(dest);
+            if (destPath === '.') {
+                destPath = curPath;
+            }
+            destFile = path.basename(dest);
+        } else {
+            destPath = path.dirname(originFilePath);
+            destFile = path.basename(originFilePath);
+        }
+
+        destFile = `${destFile ? destFile : path.basename(originFilePath)}.br`;
+
+        if (await checkPath(originFilePath) && await checkPath(destPath)) {
+            await new Promise((resolve, reject) => {
+                const readStream = createReadStream(originFilePath);
+                const writeStream = createWriteStream(path.join(destPath, destFile), { flags: 'w' });
+                const brotliCompress = zlib.createBrotliCompress();
+                readStream.pipe(brotliCompress).pipe(writeStream);
+
+                writeStream.on('finish', () => {
+                    process.stdout.write(`File compressed successfully!\n`);
+                    resolve();
+                });
+
+                writeStream.on('error', (err) => {
+                    reject('Compressed error on WriteStream');
+                });
+
+                brotliCompress.on('error', (err) => {
+                    reject('Compression error on BrotliCompress');
+                });
+            }).catch((err) => {
+                printWrongInput(err);
+            });
+        } else {
+            printWrongInput('Wrong origin or destination path');
+        }
+    } else {
+        printWrongInput();
+    }
 }
 
-const decompress = async (params) => {
-    console.log('decompress', params);
+const decompress = async ([origin, dest]) => {
+    if (origin && (!dest || (dest !== '/' && dest !== '\\' && dest !== '.' && dest !== '..'))) {
+
+        const compressedFilePath = getFullPath(origin);
+        let decompressPath = '';
+        let decompressFileName = '';
+
+        if (dest) {
+            decompressPath = path.dirname(dest);
+            if (decompressPath === '.') {
+                decompressPath = path.dirname(compressedFilePath);
+            }
+            decompressFileName = path.basename(dest);
+        } else {
+            decompressPath = path.dirname(compressedFilePath);
+            decompressFileName = path.basename(compressedFilePath, path.extname(compressedFilePath));
+        }
+
+        if (await checkPath(compressedFilePath) && await checkPath(decompressPath)) {
+            await new Promise((resolve, reject) => {
+                const readStream = createReadStream(compressedFilePath);
+                const writeStream = createWriteStream(path.join(decompressPath, decompressFileName), { flags: 'w' });
+                const brotliDecompress = zlib.createBrotliDecompress();
+                readStream.pipe(brotliDecompress).pipe(writeStream);
+
+                writeStream.on('finish', () => {
+                    process.stdout.write(`File decompressed successfully!\n`);
+                    resolve();
+                });
+
+                writeStream.on('error', (err) => {
+                    reject('Decompression error on WriteStream');
+                });
+
+                brotliDecompress.on('error', (err) => {
+                    reject('Decompression error on BrotliDecompress');
+                });
+            }).catch((err) => {
+                printWrongInput(err);
+            });
+        } else {
+            printWrongInput('Wrong origin or destination path');
+        }
+    } else {
+        printWrongInput();
+    }
 }
 
 const osInfo = async ([param]) => {
@@ -149,6 +239,13 @@ const osInfo = async ([param]) => {
 const exit = () => {
     process.stdout.write(`Thank you for using File Manager${username ? `, ${username}` : ''}, goodbye!\n`);
     process.exit(0);
+}
+
+const getFullPath = (pathname) => {
+    if (!path.isAbsolute(pathname)) {
+        pathname = path.join(curPath, pathname);
+    }
+    return pathname
 }
 
 const printCurPath = () => {
@@ -185,16 +282,16 @@ const onData = async (data) => {
     else if (cmd === 'up') await up(); // +
     else if (cmd === 'cd') await cd(params); // +
     else if (cmd === 'ls') await ls(); // +
-    else if (cmd === 'os') osInfo(params); // +
+    else if (cmd === 'os') await osInfo(params); // +
     else if (cmd === 'hash') await hash(params); // +
-    else if (cmd === 'compress') compress(params);
-    else if (cmd === 'decompress') decompress(params);
-    else if (cmd === 'cp') copy(params);
-    else if (cmd === 'rm') remove(params);
-    else if (cmd === 'mv') move(params);
-    else if (cmd === 'rn') rename(params);
-    else if (cmd === 'create') create(params);
-    else if (cmd === 'read') read(params);
+    else if (cmd === 'compress') await compress(params);
+    else if (cmd === 'decompress') await decompress(params);
+    else if (cmd === 'cp') await copy(params);
+    else if (cmd === 'rm') await remove(params);
+    else if (cmd === 'mv') await move(params);
+    else if (cmd === 'rn') await rename(params);
+    else if (cmd === 'create') await create(params);
+    else if (cmd === 'read') await read(params);
     else printWrongInput();
 
     printPrompt();
