@@ -90,6 +90,9 @@ const cat = async ([filepath]) => {
                     process.stdout.write('\n');
                     resolve();
                 })
+                readStream.on('error', () => {
+                    reject();
+                })
             }).catch(() => {
                 printWrongInput('Read error');
             });
@@ -331,7 +334,7 @@ const getRootDir = (value) => {
 const onData = async (data) => {
     const [cmd, ...params] = data.toString().trim().split(' ');
 
-    if (cmd === 'exit') exit();
+    if (cmd === 'exit' || cmd === '.exit') exit();
     else if (cmd === 'up') await up();
     else if (cmd === 'cd') await cd(params);
     else if (cmd === 'ls') await ls();
